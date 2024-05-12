@@ -249,6 +249,110 @@ void FurnaceGUI::drawExportZSM(bool onWindow) {
   }
 }
 
+void FurnaceGUI::drawExportMNM(bool onWindow) {
+  exitDisabledTimer=1;
+
+  ImGui::Text("MinMod Music File");
+
+  ImGui::Text("settings:");
+  ImGui::Checkbox("loop",&vgmExportLoop);
+  if (vgmExportLoop && e->song.loopModality==2) {
+    ImGui::Text("loop trail:");
+    ImGui::Indent();
+    if (ImGui::RadioButton("auto-detect",vgmExportTrailingTicks==-1)) {
+      vgmExportTrailingTicks=-1;
+    }
+    if (ImGui::RadioButton("add one loop",vgmExportTrailingTicks==-2)) {
+      vgmExportTrailingTicks=-2;
+    }
+    if (ImGui::RadioButton("custom",vgmExportTrailingTicks>=0)) {
+      vgmExportTrailingTicks=0;
+    }
+    if (vgmExportTrailingTicks>=0) {
+      ImGui::SameLine();
+      if (ImGui::InputInt("##TrailTicks",&vgmExportTrailingTicks,1,100)) {
+        if (vgmExportTrailingTicks<0) vgmExportTrailingTicks=0;
+      }
+    }
+    ImGui::Unindent();
+  }
+  ImGui::Checkbox("add pattern change hints",&vgmExportPatternHints);
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip(
+      "inserts sync commands on pattern changes.\n"
+      "the format of the sync command is:\n"
+      "03 rr oo 00 01\n"
+      "- oo: order\n"
+      "- rr: initial row (a 0Dxx effect is able to select a different row)"
+    );
+  }
+  ImGui::Text("file format:");
+  ImGui::Indent();
+  // if (ImGui::RadioButton("MNM",mnmExportFileType==0)) {
+  //   mnmExportFileType=0;
+  // }
+  if (ImGui::RadioButton("MNM (patterns only)",mnmExportFileType==1)) {
+    mnmExportFileType=1;
+  }
+  if (ImGui::RadioButton("MNS (samples/wavetables only)",mnmExportFileType==2)) {
+    mnmExportFileType=2;
+  }
+  // if (ImGui::RadioButton("GSF",mnmExportFileType==4)) {
+  //   mnmExportFileType=4;
+  // }
+  // if (ImGui::RadioButton("GBS (no wave channel extensions)",mnmExportFileType==5)) {
+  //   mnmExportFileType=5;
+  // }
+  ImGui::Unindent();
+  ImGui::Text("chips to export:");
+  bool hasOneAtLeast=false;
+  bool gbSelected=false;
+  bool gbaSelected=false;
+  for (int i=0; i<e->song.systemLen; i++) {
+    DivSystem sys=e->song.system[i];
+    bool isGB=sys==DIV_SYSTEM_GB;
+    bool isGBA=mnmExportFileType!=5 && (sys==DIV_SYSTEM_GBA_DMA || sys==DIV_SYSTEM_GBA_MINMOD);
+    bool disableGB=isGB && gbSelected;
+    bool disableGBA=isGBA && gbaSelected;
+    ImGui::BeginDisabled((!isGB && !isGBA) || disableGB || disableGBA);
+    ImGui::Checkbox(fmt::sprintf("%d. %s##_SYSV%d",i+1,getSystemName(e->song.system[i]),i).c_str(),&willExport[i]);
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+      if (!isGB && !isGBA) {
+        ImGui::SetTooltip("this chip is not supported by the file format!");
+      } else if (disableGB) {
+        ImGui::SetTooltip("only one Game Boy is supported!");
+      } else if (disableGBA) {
+        ImGui::SetTooltip("only one Game Boy Advance is supported!");
+      }
+    }
+    if (willExport[i] && isGB && !gbSelected) {
+      gbSelected=true;
+      hasOneAtLeast=true;
+    } else if (willExport[i] && isGBA && !gbaSelected) {
+      gbaSelected=true;
+      hasOneAtLeast=true;
+    }
+  }
+  if (hasOneAtLeast) {
+    if (onWindow) {
+      ImGui::Separator();
+      if (ImGui::Button("Cancel",ImVec2(200.0f*dpiScale,0))) ImGui::CloseCurrentPopup();
+      ImGui::SameLine();
+    }
+    if (ImGui::Button("Export",ImVec2(200.0f*dpiScale,0))) {
+      openFileDialog(GUI_FILE_EXPORT_MNM);
+      ImGui::CloseCurrentPopup();
+    }
+  } else {
+    ImGui::Text("nothing to export");
+    if (onWindow) {
+      ImGui::Separator();
+      if (ImGui::Button("Cancel",ImVec2(400.0f*dpiScale,0))) ImGui::CloseCurrentPopup();
+    }
+  }
+}
+
 void FurnaceGUI::drawExportAmigaVal(bool onWindow) {
   exitDisabledTimer=1;
 
@@ -372,6 +476,22 @@ void FurnaceGUI::drawExport() {
           ImGui::EndTabItem();
         }
       }
+      int numMNMCompat=0;
+      for (int i=0; i<e->song.systemLen; i++) {
+        if (
+          e->song.system[i]==DIV_SYSTEM_GB ||
+          e->song.system[i]==DIV_SYSTEM_GBA_DMA ||
+          e->song.system[i]==DIV_SYSTEM_GBA_MINMOD
+        ) {
+          numMNMCompat++;
+        }
+      }
+      if (numMNMCompat>0) {
+        if (ImGui::BeginTabItem("MNM")) {
+          drawExportMNM(true);
+          ImGui::EndTabItem();
+        }
+      }
       int numAmiga=0;
       for (int i=0; i<e->song.systemLen; i++) {
         if (e->song.system[i]==DIV_SYSTEM_AMIGA) numAmiga++;
@@ -405,6 +525,9 @@ void FurnaceGUI::drawExport() {
       break;
     case GUI_EXPORT_ZSM:
       drawExportZSM(true);
+      break;
+    case GUI_EXPORT_MNM:
+      drawExportMNM(true);
       break;
     case GUI_EXPORT_AMIGA_VAL:
       drawExportAmigaVal(true);

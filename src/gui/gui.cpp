@@ -1894,6 +1894,15 @@ void FurnaceGUI::openFileDialog(FurnaceGUIFileDialogs type) {
         dpiScale
       );
       break;
+    case GUI_FILE_EXPORT_MNM:
+      if (!dirExists(workingDirMNMExport)) workingDirMNMExport=getHomeDir();
+      hasOpened=fileDialog->openSave(
+        "Export MNM",
+        {"MNM files", "*.mnm *.mns *.gsf *.gbs"},
+        workingDirMNMExport,
+        dpiScale
+      );
+      break;
     case GUI_FILE_EXPORT_TEXT:
       if (!dirExists(workingDirROMExport)) workingDirROMExport=getHomeDir();
       hasOpened=fileDialog->openSave(
@@ -4271,6 +4280,22 @@ bool FurnaceGUI::loop() {
               displayExport=true;
             }
           }
+          int numMNMCompat=0;
+          for (int i=0; i<e->song.systemLen; i++) {
+            if (
+              e->song.system[i]==DIV_SYSTEM_GB ||
+              e->song.system[i]==DIV_SYSTEM_GBA_DMA ||
+              e->song.system[i]==DIV_SYSTEM_GBA_MINMOD
+            ) {
+              numMNMCompat++;
+            }
+          }
+          if (numMNMCompat>0) {
+            if (ImGui::BeginTabItem("export MNM...")) {
+              curExportType=GUI_EXPORT_MNM;
+              displayExport=true;
+            }
+          }
           int numAmiga=0;
           for (int i=0; i<e->song.systemLen; i++) {
             if (e->song.system[i]==DIV_SYSTEM_AMIGA) numAmiga++;
@@ -4868,6 +4893,9 @@ bool FurnaceGUI::loop() {
         case GUI_FILE_EXPORT_ZSM:
           workingDirZSMExport=fileDialog->getPath()+DIR_SEPARATOR_STR;
           break;
+        case GUI_FILE_EXPORT_MNM:
+          workingDirMNMExport=fileDialog->getPath()+DIR_SEPARATOR_STR;
+          break;
         case GUI_FILE_EXPORT_ROM:
         case GUI_FILE_EXPORT_TEXT:
         case GUI_FILE_EXPORT_CMDSTREAM:
@@ -5346,6 +5374,27 @@ bool FurnaceGUI::loop() {
                 }
               } else {
                 showError(fmt::sprintf("Could not write ZSM! (%s)",e->getLastError()));
+              }
+              break;
+            }
+            case GUI_FILE_EXPORT_MNM: {
+              SafeWriter* w=e->saveMNM(mnmExportFileType,willExport,vgmExportLoop,vgmExportPatternHints,vgmExportTrailingTicks);
+              if (w!=NULL) {
+                FILE* f=ps_fopen(copyOfName.c_str(),"wb");
+                if (f!=NULL) {
+                  fwrite(w->getFinalBuf(),1,w->size(),f);
+                  fclose(f);
+                  pushRecentSys(copyOfName.c_str());
+                } else {
+                  showError("could not open file!");
+                }
+                w->finish();
+                delete w;
+                if (!e->getWarnings().empty()) {
+                  showWarning(e->getWarnings(),GUI_WARN_GENERIC);
+                }
+              } else {
+                showError(fmt::sprintf("Could not write MNM! (%s)",e->getLastError()));
               }
               break;
             }
@@ -6681,6 +6730,7 @@ bool FurnaceGUI::init() {
   workingDirAudioExport=e->getConfString("lastDirAudioExport",workingDir);
   workingDirVGMExport=e->getConfString("lastDirVGMExport",workingDir);
   workingDirZSMExport=e->getConfString("lastDirZSMExport",workingDir);
+  workingDirMNMExport=e->getConfString("lastDirMNMExport",workingDir);
   workingDirROMExport=e->getConfString("lastDirROMExport",workingDir);
   workingDirFont=e->getConfString("lastDirFont",workingDir);
   workingDirColors=e->getConfString("lastDirColors",workingDir);
@@ -7246,6 +7296,7 @@ void FurnaceGUI::commitState() {
   e->setConf("lastDirAudioExport",workingDirAudioExport);
   e->setConf("lastDirVGMExport",workingDirVGMExport);
   e->setConf("lastDirZSMExport",workingDirZSMExport);
+  e->setConf("lastDirMNMExport",workingDirMNMExport);
   e->setConf("lastDirROMExport",workingDirROMExport);
   e->setConf("lastDirFont",workingDirFont);
   e->setConf("lastDirColors",workingDirColors);
@@ -7503,6 +7554,7 @@ FurnaceGUI::FurnaceGUI():
   vgmExportTrailingTicks(-1),
   drawHalt(10),
   zsmExportTickRate(60),
+  mnmExportFileType(1),//TODO
   macroPointSize(16),
   waveEditStyle(0),
   displayInsTypeListMakeInsSample(-1),

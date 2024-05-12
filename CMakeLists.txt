@@ -690,6 +690,7 @@ src/engine/waveSynth.cpp
 src/engine/wavOps.cpp
 src/engine/vgmOps.cpp
 src/engine/zsmOps.cpp
+src/engine/mnmOps.cpp
 src/engine/zsm.cpp
 
 src/engine/platform/abstract.cpp
