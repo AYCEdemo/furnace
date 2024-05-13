@@ -25,6 +25,7 @@
 #define CHIP_FREQBASE 16777216
 
 #define rWrite(a,v) {regPool[a]=v;}
+#define mnmWrite(c,a,v) {if (dumpWrites) addWrite(0xfffe0000|((c)<<8)|(a),v);}
 
 const char* regCheatSheetMinMod[]={
   "CHx_Counter", "x0",
@@ -324,6 +325,7 @@ void DivPlatformGBAMinMod::tick(bool sysTick) {
           }
           if (chan[i].audPos>0) {
             start=start+MIN(chan[i].audPos,end);
+            mnmWrite(i,5,chan[i].audPos);
           }
           start|=0x08000000;
           end|=0x08000000;
@@ -335,6 +337,7 @@ void DivPlatformGBAMinMod::tick(bool sysTick) {
         rWrite(11+i*16,end>>16);
         rWrite(12+i*16,loop&0xffff);
         rWrite(13+i*16,loop>>16);
+        if (chan[i].sample>=0) mnmWrite(i,4,chan[i].sample);
         if (!chan[i].std.vol.had) {
           chan[i].outVol=chan[i].vol;
         }
@@ -350,24 +353,42 @@ void DivPlatformGBAMinMod::tick(bool sysTick) {
       if (chan[i].freqChanged) {
         rWrite(8+i*16,chan[i].freq&0xffff);
         rWrite(9+i*16,chan[i].freq>>16);
+        //partially reusing calcFreq code
+        int nbase=chan[i].baseFreq+chan[i].pitch+chan[i].pitch2;
+        if (!parent->song.oldArpStrategy) {
+          if (chan[i].fixedArp) {
+            nbase=(chan[i].baseNoteOverride<<7)+chan[i].pitch+chan[i].pitch2;
+          } else {
+            nbase+=chan[i].arpOff<<7;
+          }
+        }
+        mnmWrite(i,0,nbase*2);
         chan[i].freqChanged=false;
       }
     }
     // don't scale echo channels
     if (chan[i].volChangedL) {
-      int out=chan[i].outVol*chan[i].chPanL;
-      if ((chan[i].echo&0xf)==0) out=(out*volScale)>>16;
-      else out=out>>1;
-      if (chan[i].invertL) out=-out;
-      rWrite(14+i*16,(isMuted[i] || !chan[i].active)?0:out);
+      int out=0;
+      if (!isMuted[i] && chan[i].active) {
+        out=chan[i].outVol*chan[i].chPanL;
+        if ((chan[i].echo&0xf)==0) out=(out*volScale)>>16;
+        else out=out>>1;
+        if (chan[i].invertL) out=-out;
+      }
+      rWrite(14+i*16,out);
+      mnmWrite(i,2,out);
       chan[i].volChangedL=false;
     }
     if (chan[i].volChangedR) {
-      int out=chan[i].outVol*chan[i].chPanR;
-      if ((chan[i].echo&0xf)==0) out=(out*volScale)>>16;
-      else out=out>>1;
-      if (chan[i].invertR) out=-out;
-      rWrite(15+i*16,(isMuted[i] || !chan[i].active)?0:out);
+      int out=0;
+      if (!isMuted[i] && chan[i].active) {
+        out=chan[i].outVol*chan[i].chPanR;
+        if ((chan[i].echo&0xf)==0) out=(out*volScale)>>16;
+        else out=out>>1;
+        if (chan[i].invertR) out=-out;
+      }
+      rWrite(15+i*16,out);
+      mnmWrite(i,3,out);
       chan[i].volChangedR=false;
     }
   }
@@ -506,9 +527,13 @@ int DivPlatformGBAMinMod::dispatch(DivCommand c) {
       chan[c.chan].audPos=c.value;
       chan[c.chan].setPos=true;
       break;
-    case DIV_CMD_MINMOD_ECHO:
+    case DIV_CMD_MINMOD_ECHO: {
       chan[c.chan].echo=c.value;
+      int src=(c.value>>4)&1;
+      int dly=c.value&0xf;
+      mnmWrite(c.chan,1,dly*2+src);
       break;
+    }
     case DIV_CMD_GET_VOLMAX:
       return 255;
       break;

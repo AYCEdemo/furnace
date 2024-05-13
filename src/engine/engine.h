@@ -698,9 +698,9 @@ class DivEngine {
     // dump to ZSM.
     SafeWriter* saveZSM(unsigned int zsmrate=60, bool loop=true, bool optimize=true);
     // dump to MNM/MNS/GSF/GBS.
-    SafeWriter* saveMNM(int type, bool* sysToExport, bool loop, bool patternHints, int trailingTicks);
+    SafeWriter* saveMNM(int type, const bool* sysToExport, bool loop, bool patternHints);
     // dump to pattern-only MNM.
-    bool saveMNMPattern(SafeWriter* w, bool* sysToExport, bool loop, bool patternHints, int trailingTicks);
+    bool saveMNMPattern(SafeWriter* w, const bool* sysToExport, bool loop, bool patternHints);
     // dump to MNS.
     bool saveMNS(SafeWriter* w);
     // dump command stream.

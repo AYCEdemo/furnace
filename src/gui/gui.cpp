@@ -5378,7 +5378,7 @@ bool FurnaceGUI::loop() {
               break;
             }
             case GUI_FILE_EXPORT_MNM: {
-              SafeWriter* w=e->saveMNM(mnmExportFileType,willExport,vgmExportLoop,vgmExportPatternHints,vgmExportTrailingTicks);
+              SafeWriter* w=e->saveMNM(mnmExportFileType,willExport,vgmExportLoop,vgmExportPatternHints);
               if (w!=NULL) {
                 FILE* f=ps_fopen(copyOfName.c_str(),"wb");
                 if (f!=NULL) {

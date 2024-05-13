@@ -256,32 +256,12 @@ void FurnaceGUI::drawExportMNM(bool onWindow) {
 
   ImGui::Text("settings:");
   ImGui::Checkbox("loop",&vgmExportLoop);
-  if (vgmExportLoop && e->song.loopModality==2) {
-    ImGui::Text("loop trail:");
-    ImGui::Indent();
-    if (ImGui::RadioButton("auto-detect",vgmExportTrailingTicks==-1)) {
-      vgmExportTrailingTicks=-1;
-    }
-    if (ImGui::RadioButton("add one loop",vgmExportTrailingTicks==-2)) {
-      vgmExportTrailingTicks=-2;
-    }
-    if (ImGui::RadioButton("custom",vgmExportTrailingTicks>=0)) {
-      vgmExportTrailingTicks=0;
-    }
-    if (vgmExportTrailingTicks>=0) {
-      ImGui::SameLine();
-      if (ImGui::InputInt("##TrailTicks",&vgmExportTrailingTicks,1,100)) {
-        if (vgmExportTrailingTicks<0) vgmExportTrailingTicks=0;
-      }
-    }
-    ImGui::Unindent();
-  }
   ImGui::Checkbox("add pattern change hints",&vgmExportPatternHints);
   if (ImGui::IsItemHovered()) {
     ImGui::SetTooltip(
       "inserts sync commands on pattern changes.\n"
       "the format of the sync command is:\n"
-      "03 rr oo 00 01\n"
+      "03 fe00oorr\n"
       "- oo: order\n"
       "- rr: initial row (a 0Dxx effect is able to select a different row)"
     );
