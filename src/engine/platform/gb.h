@@ -72,6 +72,10 @@ class DivPlatformGB: public DivDispatch {
   FixedQueue<QueuedWrite,256> writes;
 
   int antiClickPeriodCount, antiClickWavePos;
+  bool pcm;
+  unsigned int dacPos;
+  int dacSample;
+  double dacPeriod;
 
   int coreQuality;
   GB_gameboy_t* gb;
@@ -88,6 +92,7 @@ class DivPlatformGB: public DivDispatch {
     void* getChanState(int chan);
     DivMacroInt* getChanMacroInt(int ch);
     unsigned short getPan(int chan);
+    DivSamplePos getSamplePos(int ch);
     DivDispatchOscBuffer* getOscBuffer(int chan);
     unsigned char* getRegisterPool();
     int getRegisterPoolSize();

@@ -62,8 +62,83 @@ const char** DivPlatformGB::getRegisterSheet() {
   return regCheatSheetGB;
 }
 
+static unsigned char gbVolMap[16]={
+  0x00, 0x00, 0x00, 0x00,
+  0x60, 0x60, 0x60, 0x60,
+  0x40, 0x40, 0x40, 0x40,
+  0x20, 0x20, 0x20, 0x20
+};
+
+static unsigned char gbVolMapEx[16]={
+  0x00, 0x00, 0x00, 0x00,
+  0x60, 0x60, 0x60, 0x60,
+  0x40, 0x40, 0x40, 0x40,
+  0xa0, 0xa0, 0x20, 0x20
+};
+
+static unsigned char noiseTable[256]={
+  0,
+  0xf7, 0xf6, 0xf5, 0xf4,
+  0xe7, 0xe6, 0xe5, 0xe4,
+  0xd7, 0xd6, 0xd5, 0xd4,
+  0xc7, 0xc6, 0xc5, 0xc4,
+  0xb7, 0xb6, 0xb5, 0xb4,
+  0xa7, 0xa6, 0xa5, 0xa4,
+  0x97, 0x96, 0x95, 0x94,
+  0x87, 0x86, 0x85, 0x84,
+  0x77, 0x76, 0x75, 0x74,
+  0x67, 0x66, 0x65, 0x64,
+  0x57, 0x56, 0x55, 0x54,
+  0x47, 0x46, 0x45, 0x44,
+  0x37, 0x36, 0x35, 0x34,
+  0x27, 0x26, 0x25, 0x24,
+  0x17, 0x16, 0x15, 0x14,
+  0x07, 0x06, 0x05, 0x04,
+  0x03, 0x02, 0x01, 0x00,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+
 void DivPlatformGB::acquire(short** buf, size_t len) {
+  double sampRate=1./rate;
+  double dacRate=1./parent->getCurHz();
   for (size_t i=0; i<len; i++) {
+    if (pcm && dacSample!=-1) {
+      dacPeriod+=sampRate;
+      if (dacPeriod>dacRate) {
+        DivSample* s=parent->getSample(dacSample);
+        if (s->samples<=0 || dacPos>=s->samples) {
+          dacSample=-1;
+        }
+        rWrite(26,model==GB_MODEL_AGB_NATIVE?0x40:0);
+        for (int j=0; j<16; j++) {
+          int nibble1=((unsigned char)s->data8[dacPos+j*2]^0x80)>>4;
+          int nibble2=((unsigned char)s->data8[dacPos+j*2+1]^0x80)>>4;
+          if (invertWave) {
+            nibble1^=15;
+            nibble2^=15;
+          }
+          rWrite(0x30+j,(nibble1<<4)|nibble2);
+        }
+        dacPos+=32;
+        if (dacPos>=s->samples) {
+          dacSample=-1;
+          rWrite(28,0);
+        }
+        else {
+          rWrite(26,0x80);
+          rWrite(28,(model==GB_MODEL_AGB_NATIVE?gbVolMapEx:gbVolMap)[chan[2].outVol]);
+          rWrite(30,(((2048-chan[2].freq)>>8)&7)|0x80|((chan[2].soundLen<63)<<6));
+        }
+        dacPeriod-=dacRate;
+      }
+    }
     if (!writes.empty()) {
       QueuedWrite& w=writes.front();
       GB_apu_write(gb,w.addr,w.val);
@@ -129,49 +204,6 @@ unsigned char DivPlatformGB::procMute() {
                 &(isMuted[3]?chanMuteMask[3]:0xff);
 }
 
-static unsigned char gbVolMap[16]={
-  0x00, 0x00, 0x00, 0x00,
-  0x60, 0x60, 0x60, 0x60,
-  0x40, 0x40, 0x40, 0x40,
-  0x20, 0x20, 0x20, 0x20
-};
-
-static unsigned char gbVolMapEx[16]={
-  0x00, 0x00, 0x00, 0x00,
-  0x60, 0x60, 0x60, 0x60,
-  0x40, 0x40, 0x40, 0x40,
-  0xa0, 0xa0, 0x20, 0x20
-};
-
-static unsigned char noiseTable[256]={
-  0,
-  0xf7, 0xf6, 0xf5, 0xf4,
-  0xe7, 0xe6, 0xe5, 0xe4,
-  0xd7, 0xd6, 0xd5, 0xd4,
-  0xc7, 0xc6, 0xc5, 0xc4,
-  0xb7, 0xb6, 0xb5, 0xb4,
-  0xa7, 0xa6, 0xa5, 0xa4,
-  0x97, 0x96, 0x95, 0x94,
-  0x87, 0x86, 0x85, 0x84,
-  0x77, 0x76, 0x75, 0x74,
-  0x67, 0x66, 0x65, 0x64,
-  0x57, 0x56, 0x55, 0x54,
-  0x47, 0x46, 0x45, 0x44,
-  0x37, 0x36, 0x35, 0x34,
-  0x27, 0x26, 0x25, 0x24,
-  0x17, 0x16, 0x15, 0x14,
-  0x07, 0x06, 0x05, 0x04,
-  0x03, 0x02, 0x01, 0x00,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-};
-
 void DivPlatformGB::tick(bool sysTick) {
   if (antiClickEnabled && sysTick && chan[2].freq>0) {
     antiClickPeriodCount+=((chipClock>>1)/MAX(parent->getCurHz(),1.0f));
@@ -180,10 +212,13 @@ void DivPlatformGB::tick(bool sysTick) {
   }
 
   for (int i=0; i<4; i++) {
+    DivInstrument* ins=parent->getIns(chan[i].ins,DIV_INS_AMIGA);
     chan[i].std.next();
-    if (chan[i].softEnv) {
+    if ((pcm && ins->type==DIV_INS_AMIGA) || chan[i].softEnv) {
       if (chan[i].std.vol.had) {
-        chan[i].outVol=VOL_SCALE_LINEAR(chan[i].vol&15,MIN(15,chan[i].std.vol.val),15);
+        int val=chan[i].std.vol.val;
+        if (pcm && ins->type==DIV_INS_AMIGA) val/=4;
+        chan[i].outVol=VOL_SCALE_LINEAR(chan[i].vol&15,MIN(15,val),15);
         if (chan[i].outVol<0) chan[i].outVol=0;
 
         if (i==2) {
@@ -250,16 +285,14 @@ void DivPlatformGB::tick(bool sysTick) {
         if (i==2) {
           antiClickWavePos=0;
           antiClickPeriodCount=0;
+          dacPos=0;
+          dacPeriod=1./MAX(parent->getCurHz(),1.0f);
         }
       }
     }
-    if (i==2) {
-      if (chan[i].active) {
-        if (ws.tick()) {
-          updateWave();
-          if (!chan[i].keyOff) chan[i].keyOn=true;
-        }
-      }
+    if (i==2 && !pcm && chan[i].active && ws.tick()) {
+      updateWave();
+      if (!chan[i].keyOff) chan[i].keyOn=true;
     }
     // run hardware sequence
     if (chan[i].active) {
@@ -325,7 +358,11 @@ void DivPlatformGB::tick(bool sysTick) {
         if (ntPos>255) ntPos=255;
         chan[i].freq=noiseTable[ntPos];
       } else {
-        chan[i].freq=parent->calcFreq(chan[i].baseFreq,chan[i].pitch,chan[i].fixedArp?chan[i].baseNoteOverride:chan[i].arpOff,chan[i].fixedArp,true,0,chan[i].pitch2,chipClock,CHIP_DIVIDER);
+        if (i==2 && pcm) { // wave
+          chan[i].freq=chipClock/(CHIP_DIVIDER*4)/MAX(parent->getCurHz(),1.0f);
+        } else {
+          chan[i].freq=parent->calcFreq(chan[i].baseFreq,chan[i].pitch,chan[i].fixedArp?chan[i].baseNoteOverride:chan[i].arpOff,chan[i].fixedArp,true,0,chan[i].pitch2,chipClock,CHIP_DIVIDER);
+        }
         if (chan[i].freq>2047) chan[i].freq=2047;
         if (chan[i].freq<1) chan[i].freq=1;
       }
@@ -393,8 +430,20 @@ int DivPlatformGB::dispatch(DivCommand c) {
   switch (c.cmd) {
     case DIV_CMD_NOTE_ON: {
       DivInstrument* ins=parent->getIns(chan[c.chan].ins,DIV_INS_GB);
+      if (c.chan==2) {
+        if (ins->type==DIV_INS_AMIGA || ins->amiga.useSample) {
+          pcm=true;
+          chan[c.chan].wave=-1;
+          dacPeriod=1./MAX(parent->getCurHz(),1.0f);
+        } else {
+          pcm=false;
+        }
+      }
       if (c.value!=DIV_NOTE_NULL) {
-        if (c.chan==3) { // noise
+        if (c.chan==2 && pcm) { // wave
+          dacSample=ins->amiga.getSample(c.value);
+          dacPos=0;
+        } else if (c.chan==3) { // noise
           chan[c.chan].baseFreq=c.value;
         } else {
           chan[c.chan].baseFreq=NOTE_PERIODIC(c.value);
@@ -448,6 +497,10 @@ int DivPlatformGB::dispatch(DivCommand c) {
       break;
     }
     case DIV_CMD_NOTE_OFF:
+      if (c.chan==2) {
+        pcm=false;
+        dacSample=-1;
+      }
       chan[c.chan].active=false;
       chan[c.chan].keyOff=true;
       chan[c.chan].hwSeqPos=0;
@@ -619,6 +672,15 @@ unsigned short DivPlatformGB::getPan(int ch) {
   return ((p&0xf0)?0x100:0)|((p&0x0f)?1:0);
 }
 
+DivSamplePos DivPlatformGB::getSamplePos(int ch) {
+  if (ch!=2 || !pcm) return DivSamplePos();
+  return DivSamplePos(
+    dacSample,
+    dacPos,
+    parent->getCurHz()*32
+  );
+}
+
 DivDispatchOscBuffer* DivPlatformGB::getOscBuffer(int ch) {
   return oscBuf[ch];
 }
@@ -636,6 +698,10 @@ void DivPlatformGB::reset() {
     chan[i]=DivPlatformGB::Channel();
     chan[i].std.setEngine(parent);
   }
+  pcm=false;
+  dacPos=0;
+  dacPeriod=0;
+  dacSample=-1;
   ws.setEngine(parent);
   ws.init(NULL,32,15,false);
   if (dumpWrites) {

@@ -734,13 +734,13 @@ void DivEngine::registerSystems() {
   );
 
   sysDefs[DIV_SYSTEM_GB]=new DivSysDef(
-    "Game Boy", NULL, 0x04, 0x04, 4, false, true, 0x161, false, 0, 32, 16,
+    "Game Boy", NULL, 0x04, 0x04, 4, false, true, 0x161, false, 1U<<DIV_SAMPLE_DEPTH_8BIT, 32, 16,
     "the most popular portable game console of the era.",
     {"Pulse 1", "Pulse 2", "Wavetable", "Noise"},
     {"S1", "S2", "WA", "NO"},
     {DIV_CH_PULSE, DIV_CH_PULSE, DIV_CH_WAVE, DIV_CH_NOISE},
     {DIV_INS_GB, DIV_INS_GB, DIV_INS_GB, DIV_INS_GB},
-    {},
+    {DIV_INS_NULL, DIV_INS_NULL, DIV_INS_AMIGA, DIV_INS_NULL},
     {
       {0x10, {DIV_CMD_WAVE, "10xx: Set waveform"}},
       {0x11, {DIV_CMD_STD_NOISE_MODE, "11xx: Set noise length (0: long; 1: short)"}},
