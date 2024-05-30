@@ -76,6 +76,7 @@ class DivPlatformGB: public DivDispatch {
   unsigned int dacPos;
   int dacSample;
   double dacPeriod;
+  int ch3VolCmd;
 
   int coreQuality;
   GB_gameboy_t* gb;
@@ -83,7 +84,8 @@ class DivPlatformGB: public DivDispatch {
   unsigned char regPool[128];
   
   unsigned char procMute();
-  void updateWave();  
+  void updateWave();
+  void playSample();
   friend void putDispatchChip(void*,int);
   friend void putDispatchChan(void*,int,int);
   public:

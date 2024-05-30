@@ -112,30 +112,7 @@ void DivPlatformGB::acquire(short** buf, size_t len) {
     if (pcm && dacSample!=-1) {
       dacPeriod+=sampRate;
       if (dacPeriod>dacRate) {
-        DivSample* s=parent->getSample(dacSample);
-        if (s->samples<=0 || dacPos>=s->samples) {
-          dacSample=-1;
-        }
-        rWrite(26,model==GB_MODEL_AGB_NATIVE?0x40:0);
-        for (int j=0; j<16; j++) {
-          int nibble1=((unsigned char)s->data8[dacPos+j*2]^0x80)>>4;
-          int nibble2=((unsigned char)s->data8[dacPos+j*2+1]^0x80)>>4;
-          if (invertWave) {
-            nibble1^=15;
-            nibble2^=15;
-          }
-          rWrite(0x30+j,(nibble1<<4)|nibble2);
-        }
-        dacPos+=32;
-        if (dacPos>=s->samples) {
-          dacSample=-1;
-          rWrite(28,0);
-        }
-        else {
-          rWrite(26,0x80);
-          rWrite(28,(model==GB_MODEL_AGB_NATIVE?gbVolMapEx:gbVolMap)[chan[2].outVol]);
-          rWrite(30,(((2048-chan[2].freq)>>8)&7)|0x80|((chan[2].soundLen<63)<<6));
-        }
+        playSample();
         dacPeriod-=dacRate;
       }
     }
@@ -193,11 +170,40 @@ void DivPlatformGB::updateWave() {
   }
 }
 
+void DivPlatformGB::playSample() {
+  DivSample* s=parent->getSample(dacSample);
+  if (s->samples<=0 || dacPos>=s->samples) {
+    dacSample=-1;
+  }
+  rWrite(26,model==GB_MODEL_AGB_NATIVE?0x40:0);
+  for (int j=0; j<16; j++) {
+    int nibble1=((unsigned char)s->data8[dacPos+j*2]^0x80)>>4;
+    int nibble2=((unsigned char)s->data8[dacPos+j*2+1]^0x80)>>4;
+    if (invertWave) {
+      nibble1^=15;
+      nibble2^=15;
+    }
+    rWrite(0x30+j,(nibble1<<4)|nibble2);
+  }
+  dacPos+=32;
+  if (dacPos>=s->samples) {
+    dacSample=-1;
+    rWrite(28,0);
+  }
+  else {
+    rWrite(26,0x80);
+    rWrite(28,(model==GB_MODEL_AGB_NATIVE?gbVolMapEx:gbVolMap)[chan[2].outVol]);
+    rWrite(30,(((2048-chan[2].freq)>>8)&7)|0x80|((chan[2].soundLen<63)<<6));
+  }
+}
+
 static unsigned char chanMuteMask[4]={
   0xee, 0xdd, 0xbb, 0x77
 };
 
 unsigned char DivPlatformGB::procMute() {
+  unsigned char pan=isMuted[2]?0:((lastPan>>2)&0x11);
+  ch3VolCmd=(ch3VolCmd&~0x11)|pan;
   return lastPan&(isMuted[0]?chanMuteMask[0]:0xff)
                 &(isMuted[1]?chanMuteMask[1]:0xff)
                 &(isMuted[2]?chanMuteMask[2]:0xff)
@@ -222,8 +228,11 @@ void DivPlatformGB::tick(bool sysTick) {
         if (chan[i].outVol<0) chan[i].outVol=0;
 
         if (i==2) {
-          rWrite(16+i*5+2,(model==GB_MODEL_AGB_NATIVE?gbVolMapEx:gbVolMap)[chan[i].outVol]);
+          unsigned char val=(model==GB_MODEL_AGB_NATIVE?gbVolMapEx:gbVolMap)[chan[i].outVol];
+          rWrite(16+i*5+2,val);
           chan[i].soundLen=64;
+          ch3VolCmd=(ch3VolCmd&0x11)|val;
+          if (pcm && dumpWrites) addWrite(0xfffe0201,ch3VolCmd);
         } else {
           chan[i].envLen=0;
           chan[i].envDir=1;
@@ -254,7 +263,10 @@ void DivPlatformGB::tick(bool sysTick) {
         rWrite(16+i*5+1,((chan[i].duty&3)<<6)|(63-(chan[i].soundLen&63)));
       } else if (!chan[i].softEnv) {
         if (parent->song.waveDutyIsVol) {
-          rWrite(16+i*5+2,(model==GB_MODEL_AGB_NATIVE?gbVolMapEx:gbVolMap)[(chan[i].std.duty.val&3)<<2]);
+          unsigned char val=(model==GB_MODEL_AGB_NATIVE?gbVolMapEx:gbVolMap)[(chan[i].std.duty.val&3)<<2];
+          rWrite(16+i*5+2,val);
+          ch3VolCmd=(ch3VolCmd&0x11)|val;
+          if (pcm && dumpWrites) addWrite(0xfffe0201,ch3VolCmd);
         }
       }
     }
@@ -269,6 +281,7 @@ void DivPlatformGB::tick(bool sysTick) {
       lastPan&=~(0x11<<i);
       lastPan|=((chan[i].std.panL.val&1)<<i)|((chan[i].std.panL.val&2)<<(i+3));
       rWrite(0x25,procMute());
+      if (pcm && dumpWrites) addWrite(0xfffe0201,ch3VolCmd);
     }
     if (chan[i].std.pitch.had) {
       if (chan[i].std.pitch.mode) {
@@ -368,9 +381,12 @@ void DivPlatformGB::tick(bool sysTick) {
       }
       if (chan[i].keyOn) {
         if (i==2) { // wave
+          unsigned char vol=(model==GB_MODEL_AGB_NATIVE?gbVolMapEx:gbVolMap)[chan[i].outVol];
           rWrite(16+i*5,0x00);
           rWrite(16+i*5,doubleWave?0xa0:0x80);
-          rWrite(16+i*5+2,(model==GB_MODEL_AGB_NATIVE?gbVolMapEx:gbVolMap)[chan[i].outVol]);
+          rWrite(16+i*5+2,vol);
+          ch3VolCmd=(ch3VolCmd&0x11)|vol;
+          if (pcm && dumpWrites) addWrite(0xfffe0201,ch3VolCmd);
         } else {
           rWrite(16+i*5+1,((chan[i].duty&3)<<6)|(63-(chan[i].soundLen&63)));
           rWrite(16+i*5+2,((chan[i].envVol<<4))|(chan[i].envLen&7)|((chan[i].envDir&1)<<3));
@@ -419,11 +435,15 @@ void DivPlatformGB::tick(bool sysTick) {
 
     chan[i].soManyHacksToMakeItDefleCompatible=false;
   }
+  if (dumpWrites && pcm && dacSample!=-1) {
+    playSample();
+  }
 }
 
 void DivPlatformGB::muteChannel(int ch, bool mute) {
   isMuted[ch]=mute;
   rWrite(0x25,procMute());
+  if (pcm && dumpWrites) addWrite(0xfffe0201,ch3VolCmd);
 }
 
 int DivPlatformGB::dispatch(DivCommand c) {
@@ -437,12 +457,17 @@ int DivPlatformGB::dispatch(DivCommand c) {
           dacPeriod=1./MAX(parent->getCurHz(),1.0f);
         } else {
           pcm=false;
+          if (dumpWrites) addWrite(0xfffe0200,0);
         }
       }
       if (c.value!=DIV_NOTE_NULL) {
         if (c.chan==2 && pcm) { // wave
           dacSample=ins->amiga.getSample(c.value);
           dacPos=0;
+          if (dumpWrites) {
+            addWrite(0xfffe0200,dacSample+1);
+            addWrite(0xfffe0201,ch3VolCmd);
+          }
         } else if (c.chan==3) { // noise
           chan[c.chan].baseFreq=c.value;
         } else {
@@ -500,6 +525,7 @@ int DivPlatformGB::dispatch(DivCommand c) {
       if (c.chan==2) {
         pcm=false;
         dacSample=-1;
+        if (dumpWrites) addWrite(0xfffe0200,0);
       }
       chan[c.chan].active=false;
       chan[c.chan].keyOff=true;
@@ -536,7 +562,12 @@ int DivPlatformGB::dispatch(DivCommand c) {
       chan[c.chan].vol=c.value;
       chan[c.chan].outVol=c.value;
       if (c.chan==2) {
-        rWrite(16+c.chan*5+2,(model==GB_MODEL_AGB_NATIVE?gbVolMapEx:gbVolMap)[chan[c.chan].outVol]);
+        unsigned char val=(model==GB_MODEL_AGB_NATIVE?gbVolMapEx:gbVolMap)[chan[c.chan].outVol];
+        rWrite(16+c.chan*5+2,val);
+        if (pcm && dumpWrites) {
+          ch3VolCmd=(ch3VolCmd&0x11)|val;
+          addWrite(0xfffe0201,ch3VolCmd);
+        }
       }
       if (!chan[c.chan].softEnv) {
         chan[c.chan].envVol=chan[c.chan].vol;
@@ -604,6 +635,7 @@ int DivPlatformGB::dispatch(DivCommand c) {
       if (pan==0) pan=0x11;
       lastPan|=pan<<c.chan;
       rWrite(0x25,procMute());
+      if (pcm && dumpWrites) addWrite(0xfffe0201,ch3VolCmd);
       break;
     }
     case DIV_CMD_LEGATO:
@@ -715,6 +747,7 @@ void DivPlatformGB::reset() {
   // enable all channels
   immWrite(0x10,0);
   immWrite(0x26,0x8f);
+  ch3VolCmd=0;
   lastPan=0xff;
   immWrite(0x25,procMute());
   immWrite(0x24,0x77);

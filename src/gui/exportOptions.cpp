@@ -249,6 +249,66 @@ void FurnaceGUI::drawExportZSM(bool onWindow) {
   }
 }
 
+void FurnaceGUI::drawExportDevSound(bool onWindow) {
+  exitDisabledTimer=1;
+
+  ImGui::Text(
+    "this option exports an assembly source to be read by\n"
+    "DevSound driver, these features are NOT supported:\n"
+    "- full pitch linearity\n"
+    "- groove and virtual tempo\n"
+    "- delay effects\n"
+    "- relative pitch macro\n"
+    "- phase reset macro\n"
+    "- simultaneous duty macro and wave macro\n"
+    "- wavetable synthesizer\n"
+    "- wave channel anti-click\n"
+    "- volume commands in wave channel\n"
+    "- hardware pitch sweeps"
+  );
+  ImGui::InputText("base song label name", &devSoundBaseLabel); //TODO validate label
+  
+  ImGui::Text("chips to export:");
+  int gbSelected=0;
+  int gdacSelected=0;
+  for (int i=0; i<e->song.systemLen; i++) {
+    DivSystem sys=e->song.system[i];
+    bool isGB=sys==DIV_SYSTEM_GB;
+    bool isGDAC=sys==DIV_SYSTEM_PCM_DAC;
+    ImGui::BeginDisabled((!isGB && !isGDAC) || (gbSelected>=1) || (gdacSelected>=3));
+    ImGui::Checkbox(fmt::sprintf("%d. %s##_SYSV%d",i+1,getSystemName(e->song.system[i]),i).c_str(),&willExport[i]);
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+      if (!isGB && !isGDAC) {
+        ImGui::SetTooltip("this chip is not supported by the file format!");
+      } else if (gbSelected>=1) {
+        ImGui::SetTooltip("only one Game Boy is supported!");
+      } else if (gdacSelected>=3) {
+        ImGui::SetTooltip("only up to 3 generic DACs are supported!");
+      }
+    }
+    if (isGB) gbSelected++;
+    if (isGDAC) gdacSelected++;
+  }
+  if (gbSelected>0 || gdacSelected>0) {
+    if (onWindow) {
+      ImGui::Separator();
+      if (ImGui::Button("Cancel",ImVec2(200.0f*dpiScale,0))) ImGui::CloseCurrentPopup();
+      ImGui::SameLine();
+    }
+    if (ImGui::Button("Export",ImVec2(200.0f*dpiScale,0))) {
+      openFileDialog(GUI_FILE_EXPORT_DEVSOUND);
+      ImGui::CloseCurrentPopup();
+    }
+  } else {
+    ImGui::Text("nothing to export");
+    if (onWindow) {
+      ImGui::Separator();
+      if (ImGui::Button("Cancel",ImVec2(400.0f*dpiScale,0))) ImGui::CloseCurrentPopup();
+    }
+  }
+}
+
 void FurnaceGUI::drawExportAmigaVal(bool onWindow) {
   exitDisabledTimer=1;
 
@@ -372,6 +432,23 @@ void FurnaceGUI::drawExport() {
           ImGui::EndTabItem();
         }
       }
+      bool hasDevSoundCompat=false;
+      for (int i=0; i<e->song.systemLen; i++) {
+        if (
+          e->song.system[i]==DIV_SYSTEM_GB ||
+          e->song.system[i]==DIV_SYSTEM_GBA_DMA ||
+          e->song.system[i]==DIV_SYSTEM_GBA_MINMOD
+        ) {
+          hasDevSoundCompat=true;
+          break;
+        }
+      }
+      if (hasDevSoundCompat) {
+        if (ImGui::BeginTabItem("DevSound")) {
+          drawExportDevSound(true);
+          ImGui::EndTabItem();
+        }
+      }
       int numAmiga=0;
       for (int i=0; i<e->song.systemLen; i++) {
         if (e->song.system[i]==DIV_SYSTEM_AMIGA) numAmiga++;
@@ -405,6 +482,9 @@ void FurnaceGUI::drawExport() {
       break;
     case GUI_EXPORT_ZSM:
       drawExportZSM(true);
+      break;
+    case GUI_EXPORT_DEVSOUND:
+      drawExportDevSound(true);
       break;
     case GUI_EXPORT_AMIGA_VAL:
       drawExportAmigaVal(true);
