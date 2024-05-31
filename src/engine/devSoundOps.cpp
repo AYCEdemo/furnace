@@ -96,6 +96,7 @@ static void writeMacro(SafeWriter* w, const DivInstrumentMacro* macro, const cha
     if (macro->val[i]!=lastVal || end) {
       if (lastValCnt>0) {
         unsigned char val=lastVal&0xff;
+        if (macro->macroType==DIV_MACRO_ARP && (lastVal&0x40000000)!=0) val|=0x80;
         if (isWaveChannel && macro->macroType==DIV_MACRO_VOL) val=gbVolMap[val];
         w->writeText(fmt::format("{}",val));
         if (lastValCnt==2) w->writeText(fmt::format(",{}",val));
@@ -110,7 +111,6 @@ static void writeMacro(SafeWriter* w, const DivInstrumentMacro* macro, const cha
         if (!end) w->writeC(',');
       }
       lastVal=macro->val[i];
-      if (macro->macroType==DIV_MACRO_ARP && (lastVal&0x40000000)!=0) lastVal|=0x80;
       lastValCnt=end?0:macro->speed;
     } else {
       lastValCnt+=macro->speed;
@@ -486,9 +486,8 @@ SafeWriter* DivEngine::saveDevSound(const bool* sysToExport, const char* baseLab
         // write to commands list
         DevSoundCmd cmds;
         bool hasCmd=false;
-        if (news[i].note>=0 && news[i].note!=last[i].pitch) {
+        if (news[i].note>=0) {
           cmds.pitchSet=news[i].note;
-          last[i].pitch=news[i].note;
           hasCmd=true;
         }
         if (news[i].ins>=0 && news[i].ins!=last[i].ins) {
@@ -591,13 +590,21 @@ SafeWriter* DivEngine::saveDevSound(const bool* sysToExport, const char* baseLab
     w->writeC('\n');
   }
 
+  // check pcm channel if it ever has note on
+  bool doCh4=false;
+  for (auto i: allCmds[4]) {
+    if (i.second.keyOn>0) {
+      doCh4=true;
+      break;
+    }
+  }
   // write sample headers
-  w->writeText("\nPUSHS\n");
   static const char* CH_NAMES[] = {"4A","8A","8B","8C"};
-  if (!allCmds[4].empty() || gdacCnt>0) {
+  if (doCh4 || gdacCnt>0) {
+    w->writeText("\nPUSHS\n");
     w->writeText(fmt::format("\nSECTION \"{} Sample Headers\",ROMX\n",baseLabel));
   }
-  if (!allCmds[4].empty()) {
+  if (doCh4) {
     String lbl=fmt::format("{}_CH4A",baseLabel);
     w->writeText(fmt::format("{0}_CH4:\n    dw BANK({1}),{1},{1}.end,{1}.loop\n",baseLabel,lbl));
     w->writeText(fmt::format("{}_S4:\n",baseLabel));
@@ -620,6 +627,7 @@ SafeWriter* DivEngine::saveDevSound(const bool* sysToExport, const char* baseLab
   }
   // write sample channels
   for (int i=4; i<8; i++) {
+    if (i==4 && !doCh4) continue;
     if (allCmds[i].empty()) continue;
     DevSoundCmd lastCmd;
     int lastTick=0;
@@ -663,7 +671,7 @@ SafeWriter* DivEngine::saveDevSound(const bool* sysToExport, const char* baseLab
     }
     w->writeText(".end\n");
   }
-  w->writeText("\nPOPS\n");
+  if (doCh4 || gdacCnt>0) w->writeText("\nPOPS\n");
 
   remainingLoops=-1;
   playing=false;
