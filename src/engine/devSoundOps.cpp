@@ -96,7 +96,16 @@ static void writeMacro(SafeWriter* w, const DivInstrumentMacro* macro, const cha
     if (macro->val[i]!=lastVal || end) {
       if (lastValCnt>0) {
         unsigned char val=lastVal&0xff;
-        if (macro->macroType==DIV_MACRO_ARP && (lastVal&0x40000000)!=0) val+=0x80+24;
+        if (macro->macroType==DIV_MACRO_ARP) {
+          if ((lastVal&0x40000000)!=0) {
+            val=CLAMP(val,0,0x7d);
+            val|=0x80;
+          } else {
+            val=CLAMP(val,-63,63);
+            if (val<0) val=64-val;
+          }
+        }
+        if (macro->macroType==DIV_MACRO_ARP && (lastVal&0x40000000)!=0) val|=0x80;
         if (isWaveChannel && macro->macroType==DIV_MACRO_VOL) val=gbVolMap[val];
         w->writeText(fmt::format("{}",val));
         if (lastValCnt==2) w->writeText(fmt::format(",{}",val));
@@ -221,7 +230,7 @@ static const char* NOTE_NAMES[]={"C_","C#","D_","D#","E_","F_","F#","G_","G#","A
 
 static void writePSGCmd(SafeWriter* w, DevSoundCmd* cmd, int rows, const char* baseLabel, bool isWaveChannel) {
   while (rows>0) {
-    int val=MIN(rows,256);
+    int val=MIN(rows,255);
     if (cmd->speed1>=0) w->writeText(fmt::format("    sound_set_speed {},{}\n",cmd->speed1&0xff,cmd->speed2&0xff));
     if (cmd->ins>=0) w->writeText(fmt::format("    sound_instrument {}_I{}{}\n",baseLabel,isWaveChannel?"W":"",cmd->ins));
     if (cmd->vol>=0) w->writeText(fmt::format("    sound_volume {}\n",cmd->vol));
@@ -242,7 +251,7 @@ static void writePSGCmd(SafeWriter* w, DevSoundCmd* cmd, int rows, const char* b
         int note=cmd->pitchSet%12;
         w->writeText(fmt::format("    note {},{},",NOTE_NAMES[note],oct));
       }
-      w->writeText(fmt::format("{}\n",val&0xff));
+      w->writeText(fmt::format("{}\n",val));
     }
     *cmd=DevSoundCmd();
     rows-=val;
