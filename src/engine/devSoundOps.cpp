@@ -96,7 +96,7 @@ static void writeMacro(SafeWriter* w, const DivInstrumentMacro* macro, const cha
     if (macro->val[i]!=lastVal || end) {
       if (lastValCnt>0) {
         unsigned char val=lastVal&0xff;
-        if (macro->macroType==DIV_MACRO_ARP && (lastVal&0x40000000)!=0) val|=0x80;
+        if (macro->macroType==DIV_MACRO_ARP && (lastVal&0x40000000)!=0) val+=0x80+24;
         if (isWaveChannel && macro->macroType==DIV_MACRO_VOL) val=gbVolMap[val];
         w->writeText(fmt::format("{}",val));
         if (lastValCnt==2) w->writeText(fmt::format(",{}",val));
